@@ -1,17 +1,13 @@
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline
 import whisper
 import spacy
 import sys
+import numpy as np
+from spacy.lang.en.stop_words import STOP_WORDS
 
 # Load Spacy model once
 nlp = spacy.load("en_core_web_sm")
-
-# Load tokenizer and a smaller model (distilbart-cnn-12-6)
-tokenizer = AutoTokenizer.from_pretrained("sshleifer/distilbart-cnn-12-6")
-model = AutoModelForSeq2SeqLM.from_pretrained("sshleifer/distilbart-cnn-12-6")
-summarizer = pipeline("summarization", model=model, tokenizer=tokenizer)
 
 # Load Whisper model
 whisper_model = whisper.load_model("base")
@@ -25,14 +21,40 @@ def split_audio(file_path):
     chunks = split_on_silence(sound, min_silence_len=1000, silence_thresh=sound.dBFS-14, keep_silence=500)
     return chunks
 
-def generate_summary(text):
-    # Tokenize the text into sentences
+def preprocess_text(text):
     doc = nlp(text)
     sentences = [sent.text for sent in doc.sents]
-    
-    # Summarize the text using the smaller model
-    summary = summarizer(" ".join(sentences), max_length=60, min_length=30, do_sample=False)[0]['summary_text']
-    
+    return sentences
+
+def textrank(sentences, num_sentences=2):
+    # Preprocess text and remove stopwords
+    stopwords = list(STOP_WORDS)
+    clean_sentences = []
+    for sent in sentences:
+        words = [token.text for token in nlp(sent.lower()) if token.is_alpha and token.text not in stopwords]
+        clean_sentences.append(" ".join(words))
+
+    # Create similarity matrix
+    num_sentences = min(num_sentences, len(sentences))
+    similarity_matrix = np.zeros((len(sentences), len(sentences)))
+
+    for i in range(len(sentences)):
+        for j in range(len(sentences)):
+            if i != j:
+                similarity_matrix[i][j] = nlp(clean_sentences[i]).similarity(nlp(clean_sentences[j]))
+
+    # PageRank algorithm
+    scores = np.zeros(len(sentences))
+    for i in range(len(sentences)):
+        for j in range(len(sentences)):
+            if i != j:
+                scores[i] += similarity_matrix[i][j]
+
+    # Get top sentences based on scores
+    top_sentence_indices = np.argsort(scores)[-num_sentences:]
+    top_sentence_indices = sorted(top_sentence_indices)
+
+    summary = " ".join([sentences[i] for i in top_sentence_indices])
     return summary
 
 if __name__ == "__main__":
@@ -45,6 +67,7 @@ if __name__ == "__main__":
         chunk.export(chunk_path, format="wav")
         transcript_chunk = recognize_speech_whisper(chunk_path)
         transcript += transcript_chunk + " "
-    
-    summary = generate_summary(transcript)
+
+    sentences = preprocess_text(transcript)
+    summary = textrank(sentences)
     print(summary)
