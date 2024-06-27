@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: my-service
+    env:
+      PIP_CONFIG_FILE: ".pip/pip.conf"
+      PIP_TARGET: ".local/python/packages"
+      PIP_CACHE_DIR: ".local/pip/cache"
+    buildCommand: "pip install Flask numpy spacy transformers werkzeug speechRecognition whisper pydub gunicorn TensorFlow nvidia-pyindex nvidia-tensorrt && python -m spacy download en_core_web_sm"
+    startCommand: "gunicorn -w 4 -b 0.0.0.0:8000 run:app"
