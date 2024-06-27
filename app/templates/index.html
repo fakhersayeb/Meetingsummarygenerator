@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automated Meeting Summary Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+
+</head>
+<body>
+    <div class="container">
+        <h1>Automated Meeting Summary Generator</h1>
+        <form id="uploadForm">
+            <div class="file-upload-container">
+                <label for="audioFile" class="file-upload-label">Choose Audio File</label>
+                <input type="file" id="audioFile" name="audio" accept="audio/wav, audio/aiff, audio/x-aiff">
+                <span id="fileName" class="file-name">No file chosen</span>
+            </div>
+            <p>Supported file types: WAV, AIFF, AIF</p>
+            <button type="submit" class="file-upload-label">Upload and Summarize</button>
+        </form>
+        <div id="summarySection" style="display: none;">
+            <h2>Summary:</h2>
+            <p id="summaryText"></p>
+        </div>
+        <div id="loader" class="loader" style="display: none;"></div>
+    </div>
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const formData = new FormData();
+            const fileInput = document.getElementById('audioFile');
+            formData.append('audio', fileInput.files[0]);
+
+            try {
+                // Show loader while waiting for response
+                document.getElementById('loader').style.display = 'block';
+
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                document.getElementById('summarySection').style.display = 'block';
+                document.getElementById('summaryText').innerText = data.summary || 'No summary available';
+
+                // Hide loader after summary is displayed
+                document.getElementById('loader').style.display = 'none';
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('summaryText').innerText = 'An error occurred';
+
+                // Hide loader in case of error
+                document.getElementById('loader').style.display = 'none';
+            }
+        });
+
+        document.getElementById('audioFile').addEventListener('change', function() {
+            const fileName = this.files[0] ? this.files[0].name : 'No file chosen';
+            document.getElementById('fileName').innerText = fileName;
+        });
+    </script>
+</body>
+</html>
