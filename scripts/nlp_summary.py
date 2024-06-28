@@ -1,20 +1,26 @@
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
-import whisper
 import spacy
 import sys
 import numpy as np
 from spacy.lang.en.stop_words import STOP_WORDS
+import speech_recognition as sr
 
 # Load Spacy model once
 nlp = spacy.load("en_core_web_sm")
 
-# Load Whisper model
-whisper_model = whisper.load_model("base")
+# Initialize speech recognizer
+recognizer = sr.Recognizer()
 
-def recognize_speech_whisper(file_path):
-    result = whisper_model.transcribe(file_path)
-    return result['text']
+def recognize_speech_google(audio):
+    try:
+        return recognizer.recognize_google(audio)
+    except sr.UnknownValueError:
+        return "Could not understand audio"
+    except sr.RequestError:
+        return "Speech recognition service unavailable"
+    except Exception as e:
+        return f"Error processing audio: {str(e)}"
 
 def split_audio(file_path):
     sound = AudioSegment.from_file(file_path, format="wav")
@@ -34,21 +40,14 @@ def textrank(sentences, num_sentences=2):
         words = [token.text for token in nlp(sent.lower()) if token.is_alpha and token.text not in stopwords]
         clean_sentences.append(" ".join(words))
 
-    # Create similarity matrix
-    num_sentences = min(num_sentences, len(sentences))
+    # Simplified PageRank algorithm
     similarity_matrix = np.zeros((len(sentences), len(sentences)))
-
     for i in range(len(sentences)):
-        for j in range(len(sentences)):
-            if i != j:
-                similarity_matrix[i][j] = nlp(clean_sentences[i]).similarity(nlp(clean_sentences[j]))
+        for j in range(i + 1, len(sentences)):
+            similarity_matrix[i][j] = nlp(clean_sentences[i]).similarity(nlp(clean_sentences[j]))
+            similarity_matrix[j][i] = similarity_matrix[i][j]
 
-    # PageRank algorithm
-    scores = np.zeros(len(sentences))
-    for i in range(len(sentences)):
-        for j in range(len(sentences)):
-            if i != j:
-                scores[i] += similarity_matrix[i][j]
+    scores = np.sum(similarity_matrix, axis=1)
 
     # Get top sentences based on scores
     top_sentence_indices = np.argsort(scores)[-num_sentences:]
@@ -60,13 +59,11 @@ def textrank(sentences, num_sentences=2):
 if __name__ == "__main__":
     audio_file = sys.argv[1]
     audio_chunks = split_audio(audio_file)
-    
+
     transcript = ""
     for i, chunk in enumerate(audio_chunks):
-        chunk_path = f"chunk{i}.wav"
-        chunk.export(chunk_path, format="wav")
-        transcript_chunk = recognize_speech_whisper(chunk_path)
-        transcript += transcript_chunk + " "
+        audio_data = recognize_speech_google(chunk)
+        transcript += audio_data + " "
 
     sentences = preprocess_text(transcript)
     summary = textrank(sentences)
