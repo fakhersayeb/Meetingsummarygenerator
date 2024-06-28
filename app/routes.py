@@ -2,24 +2,23 @@ from flask import request, jsonify, render_template, current_app as app
 import os
 import speech_recognition as sr
 from werkzeug.utils import secure_filename
-from transformers import pipeline
 import spacy
+import numpy as np
+from spacy.lang.en.stop_words import STOP_WORDS
 
 ALLOWED_EXTENSIONS = {'wav', 'aiff', 'aif'}
 
 # Load Spacy model once
 nlp = spacy.load("en_core_web_sm")
 
-# Load a smaller and faster summarization model
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", framework="pt")
+# Initialize speech recognizer
+recognizer = sr.Recognizer()
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def recognize_speech_google(file_path):
-    recognizer = sr.Recognizer()
-    audio_file = sr.AudioFile(file_path)
-    with audio_file as source:
+    with sr.AudioFile(file_path) as source:
         audio_data = recognizer.record(source)
     try:
         return recognizer.recognize_google(audio_data)
@@ -30,14 +29,28 @@ def recognize_speech_google(file_path):
     except Exception as e:
         return f"Error processing audio: {str(e)}"
 
-def generate_summary(text):
-    # Tokenize the text into sentences
+def preprocess_text(text):
     doc = nlp(text)
     sentences = [sent.text for sent in doc.sents]
-    
-    # Summarize the text using the pre-trained transformer model
-    summary = summarizer(" ".join(sentences), max_length=130, min_length=30, do_sample=False)[0]['summary_text']
-    
+    return sentences
+
+def textrank(sentences, num_sentences=2):
+    stopwords = list(STOP_WORDS)
+    clean_sentences = []
+    for sent in sentences:
+        words = [token.text for token in nlp(sent.lower()) if token.is_alpha and token.text not in stopwords]
+        clean_sentences.append(" ".join(words))
+
+    similarity_matrix = np.zeros((len(sentences), len(sentences)))
+    for i in range(len(sentences)):
+        for j in range(i + 1, len(sentences)):
+            similarity_matrix[i][j] = nlp(clean_sentences[i]).similarity(nlp(clean_sentences[j]))
+            similarity_matrix[j][i] = similarity_matrix[i][j]
+
+    scores = np.sum(similarity_matrix, axis=1)
+    top_sentence_indices = np.argsort(scores)[-num_sentences:]
+    top_sentence_indices = sorted(top_sentence_indices)
+    summary = " ".join([sentences[i] for i in top_sentence_indices])
     return summary
 
 @app.route('/')
@@ -59,14 +72,11 @@ def upload_file():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(file_path)
 
-        # Recognize speech using Google Web Speech API
         transcript = recognize_speech_google(file_path)
-
-        # Generate summary
-        summary = generate_summary(transcript)
+        sentences = preprocess_text(transcript)
+        summary = textrank(sentences)
 
         return jsonify({'summary': summary})
-
     else:
         return jsonify({'error': 'File type not allowed'}), 400
 
