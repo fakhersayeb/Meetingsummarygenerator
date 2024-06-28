@@ -11,7 +11,7 @@ ALLOWED_EXTENSIONS = {'wav', 'aiff', 'aif'}
 nlp = spacy.load("en_core_web_sm")
 
 # Load a smaller and faster summarization model
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", framework="pt")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
