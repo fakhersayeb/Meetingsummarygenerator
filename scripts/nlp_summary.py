@@ -12,9 +12,11 @@ nlp = spacy.load("en_core_web_sm")
 # Initialize speech recognizer
 recognizer = sr.Recognizer()
 
-def recognize_speech_google(audio):
+def recognize_speech_google(chunk):
+    with sr.AudioFile(chunk) as source:
+        audio_data = recognizer.record(source)
     try:
-        return recognizer.recognize_google(audio)
+        return recognizer.recognize_google(audio_data)
     except sr.UnknownValueError:
         return "Could not understand audio"
     except sr.RequestError:
@@ -62,8 +64,10 @@ if __name__ == "__main__":
 
     transcript = ""
     for i, chunk in enumerate(audio_chunks):
-        audio_data = recognize_speech_google(chunk)
-        transcript += audio_data + " "
+        chunk_path = f"chunk{i}.wav"
+        chunk.export(chunk_path, format="wav")
+        transcript_chunk = recognize_speech_google(chunk_path)
+        transcript += transcript_chunk + " "
 
     sentences = preprocess_text(transcript)
     summary = textrank(sentences)
