@@ -13,6 +13,33 @@ nlp = spacy.load("en_core_web_sm")
 # Load a smaller and faster summarization model
 summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def recognize_speech_google(file_path):
+    recognizer = sr.Recognizer()
+    audio_file = sr.AudioFile(file_path)
+    with audio_file as source:
+        audio_data = recognizer.record(source)
+    try:
+        return recognizer.recognize_google(audio_data)
+    except sr.UnknownValueError:
+        return "Could not understand audio"
+    except sr.RequestError:
+        return "Speech recognition service unavailable"
+    except Exception as e:
+        return f"Error processing audio: {str(e)}"
+
+def generate_summary(text):
+    # Tokenize the text into sentences
+    doc = nlp(text)
+    sentences = [sent.text for sent in doc.sents]
+    
+    # Summarize the text using the pre-trained transformer model
+    summary = summarizer(" ".join(sentences), max_length=130, min_length=30, do_sample=False)[0]['summary_text']
+    
+    return summary
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -43,29 +70,5 @@ def upload_file():
     else:
         return jsonify({'error': 'File type not allowed'}), 400
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def recognize_speech_google(file_path):
-    recognizer = sr.Recognizer()
-    audio_file = sr.AudioFile(file_path)
-    with audio_file as source:
-        audio_data = recognizer.record(source)
-    try:
-        return recognizer.recognize_google(audio_data)
-    except sr.UnknownValueError:
-        return "Could not understand audio"
-    except sr.RequestError:
-        return "Speech recognition service unavailable"
-    except Exception as e:
-        return f"Error processing audio: {str(e)}"
-
-def generate_summary(text):
-    # Tokenize the text into sentences
-    doc = nlp(text)
-    sentences = [sent.text for sent in doc.sents]
-    
-    # Summarize the text using the pre-trained transformer model
-    summary = summarizer(" ".join(sentences), max_length=130, min_length=30, do_sample=False)[0]['summary_text']
-    
-    return summary
+if __name__ == "__main__":
+    app.run(debug=True)
